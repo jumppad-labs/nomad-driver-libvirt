@@ -5,6 +5,7 @@ go 1.19
 
 require (
 	github.com/digitalocean/go-libvirt v0.0.0-20221205150000-2939327a8519
+	github.com/google/uuid v1.3.0
 	github.com/hashicorp/consul-template v0.29.6-0.20221026140134-90370e07bf62
 	github.com/hashicorp/go-hclog v1.3.1
 	github.com/hashicorp/nomad v1.4.2

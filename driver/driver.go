@@ -8,9 +8,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/hashicorp/consul-template/signals"
 	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/nomad/client/stats"
 	"github.com/hashicorp/nomad/drivers/shared/eventer"
 	"github.com/hashicorp/nomad/plugins/base"
 	"github.com/hashicorp/nomad/plugins/drivers"
@@ -42,6 +42,7 @@ var (
 		Exec:                false,
 		MustInitiateNetwork: false,
 		NetIsolationModes: []drivers.NetIsolationMode{
+			drivers.NetIsolationModeHost,
 			drivers.NetIsolationModeGroup,
 		},
 	}
@@ -173,6 +174,47 @@ func (d *LibVirtDriverPlugin) StartTask(taskConfig *drivers.TaskConfig) (*driver
 		return nil, nil, fmt.Errorf("failed to decode driver config: %v", err)
 	}
 
+	disks := []libvirtxml.DomainDisk{}
+	for _, disk := range driverConfig.Disk {
+		disks = append(disks, libvirtxml.DomainDisk{
+			Driver: &libvirtxml.DomainDiskDriver{
+				Name: disk.Driver.Name,
+				Type: disk.Driver.Type,
+			},
+			Source: &libvirtxml.DomainDiskSource{
+				File: &libvirtxml.DomainDiskSourceFile{
+					File: disk.Source,
+				},
+			},
+			Target: &libvirtxml.DomainDiskTarget{
+				Dev: disk.Target,
+			},
+			Device: disk.Device,
+		})
+	}
+
+	// interfaces := []libvirtxml.DomainInterface{}
+	// for _, i := range driverConfig.Interface {
+	// 	fmt.Println(i)
+	// 	interfaces = append(interfaces, libvirtxml.DomainInterface{
+	// 		Model: &libvirtxml.DomainInterfaceModel{
+	// 			Type: "virtio",
+	// 		},
+	// 		Source: &libvirtxml.DomainInterfaceSource{
+	// 			Network: &libvirtxml.DomainInterfaceSourceNetwork{
+	// 				Network: "nomad",
+	// 				// Bridge: "nomad",
+	// 			},
+	// 			// Direct: &libvirtxml.DomainInterfaceSourceDirect{
+	// 			// 	Dev: "eth0",
+	// 			// },
+	// 			Bridge: &libvirtxml.DomainInterfaceSourceBridge{
+	// 				Bridge: i.Source,
+	// 			},
+	// 		},
+	// 	})
+	// }
+
 	d.logger.Info("starting task", "driver_cfg", hclog.Fmt("%+v", driverConfig))
 	handle := drivers.NewTaskHandle(taskHandleVersion)
 	handle.Config = taskConfig
@@ -187,8 +229,8 @@ func (d *LibVirtDriverPlugin) StartTask(taskConfig *drivers.TaskConfig) (*driver
 
 	domainConfig := &libvirtxml.Domain{
 		Type: "qemu",
-		Name: "vm",
-		UUID: "c7a5fdbd-cdaf-9455-926a-d65c16db1809",
+		Name: taskConfig.JobName,
+		UUID: uuid.New().String(),
 		Memory: &libvirtxml.DomainMemory{
 			Value: 4096,
 			Unit:  "MB",
@@ -213,31 +255,74 @@ func (d *LibVirtDriverPlugin) StartTask(taskConfig *drivers.TaskConfig) (*driver
 			},
 		},
 		Devices: &libvirtxml.DomainDeviceList{
-			Emulator: "/usr/bin/qemu-system-x86_64",
-			Disks: []libvirtxml.DomainDisk{
-				{
-					Driver: &libvirtxml.DomainDiskDriver{
-						Name: "qemu",
-						Type: "qcow2",
-					},
-					Source: &libvirtxml.DomainDiskSource{
-						File: &libvirtxml.DomainDiskSourceFile{
-							File: "/home/erik/code/jumppad/vm/docker/custom.qcow2",
-						},
-					},
-					Target: &libvirtxml.DomainDiskTarget{
-						Dev: "hda",
-					},
-					Device: "disk",
-				},
-			},
+			Emulator: d.config.Emulator,
+			Disks:    disks,
 			Graphics: []libvirtxml.DomainGraphic{
 				{
 					VNC: &libvirtxml.DomainGraphicVNC{
-						Port:      -1,
-						WebSocket: 8999,
+						Port:      driverConfig.Vnc.Port,
+						WebSocket: driverConfig.Vnc.Websocket,
 					},
 				},
+			},
+			// Interfaces: interfaces,
+			Interfaces: []libvirtxml.DomainInterface{
+				// DOES NOT WORK:
+				// 	{
+				// 		Model: &libvirtxml.DomainInterfaceModel{
+				// 			Type: "virtio",
+				// 		},
+				// 		Source: &libvirtxml.DomainInterfaceSource{
+				// 			Direct: &libvirtxml.DomainInterfaceSourceDirect{
+				// 				Dev:  "eth0",
+				// 				Mode: "bridge",
+				// 			},
+				// 		},
+				// 	},
+				// WORKS:
+				// {
+				// 	Model: &libvirtxml.DomainInterfaceModel{
+				// 		Type: "virtio",
+				// 	},
+				// 	Source: &libvirtxml.DomainInterfaceSource{
+				// 		Network: &libvirtxml.DomainInterfaceSourceNetwork{
+				// 			Network: "default",
+				// 		},
+				// 	},
+				// },
+				// DOES NOT WORK:
+				// {
+				// 	Model: &libvirtxml.DomainInterfaceModel{
+				// 		Type: "virtio",
+				// 	},
+				// 	Source: &libvirtxml.DomainInterfaceSource{
+				// 		Network: &libvirtxml.DomainInterfaceSourceNetwork{
+				// 			Network: "nomad",
+				// 		},
+				// 	},
+				// },
+				// WORKS:
+				{
+					Model: &libvirtxml.DomainInterfaceModel{
+						Type: "virtio",
+					},
+					Source: &libvirtxml.DomainInterfaceSource{
+						Bridge: &libvirtxml.DomainInterfaceSourceBridge{
+							Bridge: "virbr0",
+						},
+					},
+				},
+				// DOES NOT WORK:
+				// {
+				// 	Model: &libvirtxml.DomainInterfaceModel{
+				// 		Type: "virtio",
+				// 	},
+				// 	Source: &libvirtxml.DomainInterfaceSource{
+				// 		Bridge: &libvirtxml.DomainInterfaceSourceBridge{
+				// 			Bridge: "nomad",
+				// 		},
+				// 	},
+				// },
 			},
 		},
 	}
@@ -255,16 +340,16 @@ func (d *LibVirtDriverPlugin) StartTask(taskConfig *drivers.TaskConfig) (*driver
 	// LibVirt logic end
 
 	h := &taskHandle{
-		ctx:           d.ctx,
-		domain:        domain,
-		client:        client,
-		taskConfig:    taskConfig,
-		taskState:     drivers.TaskStateRunning,
-		startedAt:     time.Now().Round(time.Millisecond),
-		logger:        d.logger,
-		cpuStatsSys:   stats.NewCpuStats(),
-		cpuStatsUser:  stats.NewCpuStats(),
-		cpuStatsTotal: stats.NewCpuStats(),
+		ctx:        d.ctx,
+		domain:     domain,
+		client:     client,
+		taskConfig: taskConfig,
+		taskState:  drivers.TaskStateRunning,
+		startedAt:  time.Now().Round(time.Millisecond),
+		logger:     d.logger,
+		// cpuStatsSys:   stats.NewCpuStats(),
+		// cpuStatsUser:  stats.NewCpuStats(),
+		// cpuStatsTotal: stats.NewCpuStats(),
 	}
 
 	driverState := TaskState{
@@ -362,9 +447,7 @@ func (d *LibVirtDriverPlugin) StopTask(taskID string, timeout time.Duration, sig
 		return drivers.ErrTaskNotFound
 	}
 
-	if err := handle.shutdown(timeout); err != nil {
-		return fmt.Errorf("executor Shutdown failed: %v", err)
-	}
+	handle.shutdown(timeout)
 
 	return nil
 }
@@ -380,6 +463,12 @@ func (d *LibVirtDriverPlugin) DestroyTask(taskID string, force bool) error {
 
 	if handle.IsRunning() && !force {
 		return errors.New("cannot destroy running task")
+	}
+
+	err := handle.client.DomainDestroyFlags(handle.domain, libvirt.DomainDestroyGraceful)
+	if err != nil {
+		err = handle.client.DomainDestroyFlags(handle.domain, libvirt.DomainDestroyDefault)
+		return err
 	}
 
 	// Destroying a task includes removing any resources used by task and any

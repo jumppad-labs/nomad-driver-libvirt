@@ -1,0 +1,11 @@
+<network>
+  <name>nomad</name>
+  <uuid>4a3caaa9-2df4-41ca-b2e6-ba8b502a9566</uuid>
+  <forward mode='nat'/>
+  <bridge name='nomad' stp='on' delay='0'/>
+  <ip address='172.26.64.1' netmask='255.255.240.0'>
+    <dhcp>
+      <range start='172.26.64.2' end='172.26.79.255'/>
+    </dhcp>
+  </ip>
+</network>
