@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"os"
 	"time"
@@ -179,11 +178,10 @@ func (d *LibVirtDriverPlugin) StartTask(taskConfig *drivers.TaskConfig) (*driver
 	handle.Config = taskConfig
 
 	// LibVirt logic start
-
 	dialer := socket.NewLocal()
 
-	l := libvirt.NewWithDialer(dialer)
-	if err := l.Connect(); err != nil {
+	client := libvirt.NewWithDialer(dialer)
+	if err := client.Connect(); err != nil {
 		return nil, nil, fmt.Errorf("failed to connect: %v", err)
 	}
 
@@ -245,13 +243,13 @@ func (d *LibVirtDriverPlugin) StartTask(taskConfig *drivers.TaskConfig) (*driver
 	}
 
 	xml, err := domainConfig.Marshal()
-	domain, err := l.DomainCreateXML(xml, libvirt.DomainNone)
 	if err != nil {
-		log.Fatalf("failed to create domains: %v", err)
+		return nil, nil, fmt.Errorf("could not marshall vm config: %v", err)
 	}
 
-	if err := l.Disconnect(); err != nil {
-		return nil, nil, fmt.Errorf("failed to disconnect: %v", err)
+	domain, err := client.DomainCreateXML(xml, libvirt.DomainNone)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create domains: %v", err)
 	}
 
 	// LibVirt logic end
@@ -259,6 +257,7 @@ func (d *LibVirtDriverPlugin) StartTask(taskConfig *drivers.TaskConfig) (*driver
 	h := &taskHandle{
 		ctx:           d.ctx,
 		domain:        domain,
+		client:        client,
 		taskConfig:    taskConfig,
 		taskState:     drivers.TaskStateRunning,
 		startedAt:     time.Now().Round(time.Millisecond),

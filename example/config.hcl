@@ -5,5 +5,6 @@ client {
 
 plugin "libvirt" {
   config {
+    
   }
 }

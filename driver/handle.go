@@ -26,6 +26,7 @@ type taskHandle struct {
 	completedAt time.Time
 	exitResult  *drivers.ExitResult
 
+	client *libvirt.Libvirt
 	domain libvirt.Domain
 	ctx    context.Context
 
@@ -64,11 +65,28 @@ func (h *taskHandle) run() {
 	h.stateLock.Unlock()
 
 	// wait for vm
+	ch, err := h.client.SubscribeEvents(h.ctx, libvirt.DomainEventIDLifecycle, libvirt.OptDomain{h.domain})
+	if err != nil {
+		h.logger.Error("Could not subscribe to events", err)
+	}
+
+	switch ch {
+
+	}
 
 	h.stateLock.Lock()
 	defer h.stateLock.Unlock()
 
 	// stop vm
+	err = h.client.DomainShutdown(h.domain)
+	if err != nil {
+		h.logger.Error("Could not shutdown vm", err)
+	}
+
+	err = h.client.Disconnect()
+	if err != nil {
+		h.logger.Error("Could not disconnect from libvirt", err)
+	}
 
 	h.taskState = drivers.TaskStateExited
 	h.exitResult.ExitCode = 0
